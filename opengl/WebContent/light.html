@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Insert title here</title>
+<script type="text/javascript" src="jquery-1.11.3.min.js"></script>
+<script type="text/javascript" src="gl-matrix.js"></script>
+</head>
+<body>
+	<canvas id="canvas" width="800" height="600"></canvas>
+	<script id="vs" type="x-shader/webgl">
+		attribute vec3 v3;
+		uniform vec3 lightd;  
+		uniform mat4 pm;
+		uniform mat4 mv;
+		uniform vec3 eye;
+		varying vec3 vp3;
+		varying vec4 vAmbient;
+		varying vec4 vDiffuse;
+		varying vec4 vSpecular;
+		
+		void lightfun(vec3 lightDiff){
+			//镜面光
+			vec3 pv=(mv*vec4(v3,1.0)).xyz;  //法向量
+			vec3 inLight=lightd-pv;  //入射向量
+			vec3 eyepv=eye-pv; 
+			vec3 halfp=eyepv+inLight; //半向量
+			float dotv=dot(pv,halfp)/(length(pv)*length(halfp));
+			float shiniess=10.0;
+			float powerv=pow(max(0.0,dotv),shiniess);
+			vSpecular=vec4(lightDiff*powerv,1.0);
+			//散射光
+			float dotv1=max(0.0,dot(pv,inLight)/(length(pv)*length(inLight)));
+			vDiffuse=vec4(dotv1*lightDiff,1.0);
+
+			//环境光
+			vAmbient=vec4(0.15,0.15,0.15,1.0);
+			
+		}
+		void main(){
+			lightfun(vec3(0.8,0.8,0.8));
+			gl_Position=pm*mv*vec4(v3,1.0);
+			vp3=v3;
+		}
+		
+    </script>
+    
+     <script id="fs" type="x-shader/webgl">
+		precision mediump float;
+		uniform float ur;
+		varying vec3 vp3;
+		varying vec4 vAmbient;
+		varying vec4 vDiffuse;
+		varying vec4 vSpecular;
+		void main(){
+			vec3 color;
+			float n=8.0;
+			float span=2.0*ur/n;
+			int i=int((vp3.x+ur)/span);
+			int j=int((vp3.y+ur)/span);
+			int k=int((vp3.z+ur)/span);
+			int wc=int(mod(float(i+j+k),2.0));
+			if(wc==1){
+				color=vec3(0.678,0.231,0.129);
+			}else{
+				color=vec3(1.0,1.0,1.0);
+			}
+			//最终颜色
+		   vec4 finalColor=vec4(color,1.0);
+		   //给此片元颜色值
+		   gl_FragColor=finalColor*(vSpecular+vDiffuse+vAmbient);
+		}
+    </script>
+   
+	
+	<script type="text/javascript">
+		$(function(){
+			var gl=initGL();
+			
+			gl.clearColor(0.0,0.0,0.0,1.0);
+			gl.enable(gl.DEPTH_TEST);
+			gl.viewport(0,0,gl.width,gl.height);
+			gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+			var pvs=mat4.create();
+			var camera=mat4.create();
+			var move=mat4.create();
+			var radios=gl.width/gl.height;
+			var eye=[0.0,0.0,1.2];
+			mat4.frustum(pvs,-radios,radios,-1,1,1,50);
+			mat4.lookAt(camera,eye,[0.0,0.0,0.0],[0.0,1.0,0.0]);
+			//旋转
+			mat4.rotate(move,move,45*Math.PI/180,[1.0,1.0,1.0]);
+			mat4.multiply(pvs,pvs,camera);
+
+			var ball=new Ball(0.5,gl,pvs,move,eye);
+			ball.draw();
+
+			/*
+			正交投影矩阵
+			mat4.ortho(pvs,-radios,radios,-1,1,1,10);
+			mat4.lookAt(camera,[-1.0,-1.0,3.0],[0.0,0.0,0.0],[0.0,1.0,0.0]);
+			*/
+			//透视投影矩阵
+			//mat4.frustum(pvs,-radios,radios,-1,1,1,50);
+			//mat4.lookAt(camera,[0.0,1.0,2.0],[0.0,0.0,0.0],[0.0,1.0,0.0]);
+
+			
+		});
+		function initGL(){
+			var canvas=$("#canvas")[0];
+			gl=canvas.getContext("webgl");
+			gl.width=canvas.width;
+			gl.height=canvas.height;
+			return gl;
+		}
+		function Ball(r,gl,pvs,mvs,eye){
+			var arrayBuffer;
+			var program;
+			var pms=pvs;
+			var mv=mvs;
+			var init=function(){
+				initShader();
+				initBuffers();
+			}
+			var initShader=function(){
+				var vs=getShader("vs",gl.VERTEX_SHADER);
+				var fs=getShader("fs",gl.FRAGMENT_SHADER);
+				
+				program=gl.createProgram();
+				gl.attachShader(program,vs);
+				gl.attachShader(program,fs);
+				
+				gl.linkProgram(program);
+				if(!gl.getProgramParameter(program,gl.LINK_STATUS)){
+					alert("link error");
+					console.log(gl.getProgramInfoLog(program));
+					return;
+				}
+				
+				program.v3=gl.getAttribLocation(program,"v3");
+				program.mv=gl.getUniformLocation(program, "mv");
+				program.pm=gl.getUniformLocation(program, "pm");
+				program.ur=gl.getUniformLocation(program, "ur");
+				program.lightd=gl.getUniformLocation(program, "lightd");
+				program.eye=gl.getUniformLocation(program, "eye");
+
+				gl.enableVertexAttribArray(program.v3);	
+			};
+			var getShader=function(id,type){
+				var shaderScript = $("#" + id);
+				var str = shaderScript.text();
+				var shader=gl.createShader(type);
+				gl.shaderSource(shader,str);
+				gl.compileShader(shader);
+				
+				if(!gl.getShaderParameter(shader,gl.COMPILE_STATUS)){
+					alert("complie error");
+					console.log(gl.getShaderInfoLog(shader));
+					return null;
+				}
+				return shader;
+			};
+			
+			function initBuffers(){
+				var arcin=10;
+				var arc=Math.PI/180;
+				var points=new Array();
+				for(var i=-90;i<90;i+=arcin){  //行的方向
+					for(var j=0;j<=360;j+=arcin){ //列的方向
+						 var x0=r*Math.cos(j*arc)*Math.cos(i*arc);
+						 var y0=r*Math.sin(j*arc)*Math.cos(i*arc);
+						 var z0=r*Math.sin(i*arc);
+
+						 var x1=r*Math.cos((j+arcin)*arc)*Math.cos(i*arc);
+						 var y1=r*Math.sin((j+arcin)*arc)*Math.cos(i*arc);
+						 var z1=r*Math.sin(i*arc);
+
+						var x2=r*Math.cos((j+arcin)*arc)*Math.cos((i+arcin)*arc);
+						var y2=r*Math.sin((j+arcin)*arc)*Math.cos((i+arcin)*arc);
+						var z2=r*Math.sin((i+arcin)*arc);
+
+						var x3=r*Math.cos((j)*arc)*Math.cos((i+arcin)*arc);
+						var y3=r*Math.sin((j)*arc)*Math.cos((i+arcin)*arc);
+						var z3=r*Math.sin((i+arcin)*arc);
+
+						points.push(x0);points.push(y0);points.push(z0);
+						points.push(x3);points.push(y3);points.push(z3);
+						points.push(x2);points.push(y2);points.push(z2);				
+						
+						points.push(x2);points.push(y2);points.push(z2);
+						points.push(x1);points.push(y1);points.push(z1);
+						points.push(x0);points.push(y0);points.push(z0);
+						
+					}
+				}
+
+				arrayBuffer=gl.createBuffer();
+				gl.bindBuffer(gl.ARRAY_BUFFER, arrayBuffer);
+				gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(points), gl.STATIC_DRAW);
+
+				arrayBuffer.items=points.length/3;
+			
+			};
+			this.draw=function(){
+				gl.useProgram(program);
+				//gl.frontFace(gl.CW);
+				gl.enable(gl.CULL_FACE);
+				
+				
+				//mat4.translate(mv,mv,[-0.1*z,0.0,0.0]);
+				gl.bindBuffer(gl.ARRAY_BUFFER,arrayBuffer);
+				gl.vertexAttribPointer(program.v3,3,gl.FLOAT,false,0,0);
+				
+				gl.uniformMatrix4fv(program.mv, false, mv);
+				gl.uniformMatrix4fv(program.pm, false, pms);
+				gl.uniform3fv(program.lightd,[-4.0,0.0,0.0]);
+				gl.uniform1f(program.ur,r);
+				gl.uniform3fv(program.eye, eye);
+				
+				gl.drawArrays(gl.TRIANGLES, 0, arrayBuffer.items);
+			};
+			init();
+		}
+	</script>
+</body>
+</html>

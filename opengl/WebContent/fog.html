@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Insert title here</title>
+<script type="text/javascript" src="jquery-1.11.3.min.js"></script>
+<script type="text/javascript" src="gl-matrix.js"></script>
+</head>
+<body>
+	<canvas id="canvas" width="800" height="600"></canvas>
+	<script id="vs" type="x-shader/webgl">
+		attribute vec3 v3;
+		attribute vec3 normalv;
+		uniform vec3 eye;
+		uniform vec3 lightd;
+		uniform mat4 mv;
+		uniform mat4 pm;
+		varying vec4 vAmbient; //环境光
+		varying vec4 vDiffuse; //散射光
+		varying vec4 vSpecular; //镜面反射光
+		varying float fog;
+		void lightfun(vec4 power){
+			//环境光
+			vAmbient=vec4(0.6,0.6,0.6,1.0);
+			//散色光
+			vec3 pv=(mv*vec4(v3,1.0)).xyz;
+			vec3 norv=(mv*vec4(normalv,1.0)).xyz;
+			vec3 lv=lightd-pv;
+			vDiffuse=max(0.0,dot(lv,norv)/(length(lv)*length(norv)))*power;
+			//镜面反射光
+			vec3 eyev=eye-pv;
+			vec3 halfp=eyev+lv;
+			float shiniess=10.0;
+			vSpecular=pow(max(0.0,dot(halfp,norv)/(length(norv)*length(halfp))),shiniess)*power;
+		}
+		void main(){
+			const float start=300.0;
+			const float end=400.0;
+			lightfun(vec4(0.8,0.8,0.8,1.0));
+			fog=1.0-smoothstep(start,end,length(eye-(mv*vec4(v3,1.0)).xyz));
+			gl_Position=pm*mv*vec4(v3,1.0);
+		}
+    </script>
+    
+     <script id="fs" type="x-shader/webgl">
+		precision mediump float;
+		varying vec4 vAmbient;
+		varying vec4 vDiffuse;
+		varying vec4 vSpecular;
+		varying float fog;
+		void main(){
+     		vec4 finalColor=vec4(0.9,0.9,0.9,1.0);
+			vec4 fogColor=vec4(0.97,0.76,0.03,1.0);
+			if(fog!=0.0){
+				vec4 oColor=finalColor*(vAmbient+vDiffuse+vSpecular);
+				gl_FragColor=oColor*fog+fogColor*(1.0-fog);
+			}else{
+				gl_FragColor=finalColor;
+			}
+			
+		}
+    </script>
+	
+	<script type="text/javascript">
+		$(function(){
+			var gl=initGL();
+			
+			gl.clearColor(0.0,0.0,0.0,1.0);
+			gl.enable(gl.DEPTH_TEST);
+			gl.viewport(0,0,gl.width,gl.height);
+			
+			var pvs=mat4.create();
+			var camera=mat4.create();
+			var move=mat4.create();
+			var radios=gl.width/gl.height;
+			var eye=[0.0,0.0,30.0];
+			mat4.frustum(pvs,-radios,radios,-1,1,1,100);
+			mat4.lookAt(camera,eye,[0.0,0.0,0.0],[0.0,1.0,0.0]);
+			//旋转
+			mat4.translate(move,move,[0.0,0.0,-8.0]);
+			mat4.rotate(move,move,45*Math.PI/180,[1.0,1.0,1.0]);
+			
+			var finalmat=mat4.create();
+			mat4.multiply(finalmat,pvs,camera);
+			
+			var t=new Teapot(gl,finalmat,move,eye);	
+			
+			
+			/*
+			正交投影矩阵
+			mat4.ortho(pvs,-radios,radios,-1,1,1,10);
+			mat4.lookAt(camera,[-1.0,-1.0,3.0],[0.0,0.0,0.0],[0.0,1.0,0.0]);
+			*/
+			//透视投影矩阵
+			//mat4.frustum(pvs,-radios,radios,-1,1,1,50);
+			//mat4.lookAt(camera,[0.0,1.0,2.0],[0.0,0.0,0.0],[0.0,1.0,0.0]);
+
+			
+		});
+		function initGL(){
+			var canvas=$("#canvas")[0];
+			gl=canvas.getContext("webgl");
+			gl.width=canvas.width;
+			gl.height=canvas.height;
+			return gl;
+		}
+		function Teapot(gl,pms,mvs,eye,tex){
+			var arrayBuffer;
+			var norvBuffer;
+			var program;
+			var mv=mvs;
+			var pm=pms;
+			var init=function(){
+				initShader();
+				initBuffers();
+			}
+			var initShader=function(){
+				var vs=getShader("vs",gl.VERTEX_SHADER);
+				var fs=getShader("fs",gl.FRAGMENT_SHADER);
+				
+				program=gl.createProgram();
+				gl.attachShader(program,vs);
+				gl.attachShader(program,fs);
+				
+				gl.linkProgram(program);
+				if(!gl.getProgramParameter(program,gl.LINK_STATUS)){
+					alert("link error");
+					console.log(gl.getProgramInfoLog(program));
+					return;
+				}
+				
+				program.v3=gl.getAttribLocation(program,"v3");
+				program.normalv=gl.getAttribLocation(program,"normalv");
+				program.mv=gl.getUniformLocation(program, "mv");
+				program.pm=gl.getUniformLocation(program, "pm");
+				program.lightd=gl.getUniformLocation(program, "lightd");
+				program.eye=gl.getUniformLocation(program, "eye");
+
+				gl.enableVertexAttribArray(program.v3);
+				gl.enableVertexAttribArray(program.normalv);
+			};
+			var getShader=function(id,type){
+				var shaderScript = $("#" + id);
+				var str = shaderScript.text();
+				var shader=gl.createShader(type);
+				gl.shaderSource(shader,str);
+				gl.compileShader(shader);
+				
+				if(!gl.getShaderParameter(shader,gl.COMPILE_STATUS)){
+					alert("complie error");
+					console.log(gl.getShaderInfoLog(shader));
+					return null;
+				}
+				return shader;
+			};
+			
+			function initBuffers(){
+				$.ajax({
+			        url : "teapot.json",
+			        success : function(data) {	  
+			        	arrayBuffer=gl.createBuffer();
+						gl.bindBuffer(gl.ARRAY_BUFFER, arrayBuffer);
+						gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(data.v), gl.STATIC_DRAW);
+						arrayBuffer.items=data.v.length/3;
+						var faces=arrayBuffer.items/3;
+						var norArray=new Array();
+						for(var i=0;i<faces;i++){
+							var p1=vec3.fromValues(data.v[9*i],data.v[9*i+1],data.v[9*i+2]);
+							var p2=vec3.fromValues(data.v[9*i+3],data.v[9*i+4],data.v[9*i+5]);
+							var p3=vec3.fromValues(data.v[9*i+6],data.v[9*i+7],data.v[9*i+8]);
+							vec3.subtract(p2,p1,p2);
+							vec3.subtract(p3,p1,p3);
+							vec3.cross(p1,p2,p3);
+							for(var j=0;j<3;j++){
+								norArray.push(p1[0]);
+								norArray.push(p1[1]);
+								norArray.push(p1[2]);	
+							}
+							
+						}
+						
+						norvBuffer=gl.createBuffer();
+						gl.bindBuffer(gl.ARRAY_BUFFER, norvBuffer);
+						gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(norArray), gl.STATIC_DRAW);
+						
+						gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+						draw();
+			        }
+				});
+			};
+			var draw=function(){
+				gl.useProgram(program);
+				//gl.frontFace(gl.CW);
+				gl.enable(gl.CULL_FACE);
+				
+				
+				//mat4.translate(mv,mv,[-0.1*z,0.0,0.0]);
+				gl.bindBuffer(gl.ARRAY_BUFFER,arrayBuffer);
+				gl.vertexAttribPointer(program.v3,3,gl.FLOAT,false,0,0);
+
+				gl.bindBuffer(gl.ARRAY_BUFFER,norvBuffer);
+				gl.vertexAttribPointer(program.normalv,3,gl.FLOAT,false,0,0);
+				
+				gl.uniformMatrix4fv(program.mv, false, mv);
+				gl.uniformMatrix4fv(program.pm, false, pm);
+				gl.uniform3fv(program.lightd,[12.0,20.0,-7.0]);
+				gl.uniform3fv(program.eye, eye);
+				
+				//gl.uniform1f(program.ur,r);
+				
+				gl.drawArrays(gl.TRIANGLES, 0, arrayBuffer.items);
+			};
+			init();
+		}	
+		
+	</script>
+</body>
+</html>

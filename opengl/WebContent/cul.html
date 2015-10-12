@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Insert title here</title>
+<script type="text/javascript" src="jquery-1.11.3.min.js"></script>
+<script type="text/javascript" src="gl-matrix.js"></script>
+</head>
+<body>
+	<canvas id="canvas" width="800" height="600"></canvas>
+	<script id="vs" type="x-shader/webgl">
+		uniform mat4 mv; //总变换矩阵
+		attribute vec3 v3;  //顶点位置
+		attribute vec4 v4;    //顶点颜色
+		varying  vec4 vColor;  //用于传递给片元着色器的变量
+		void main()  {
+		   gl_Position = mv * vec4(v3,1.0); //根据总变换矩阵计算此次绘制此顶点位置
+		   vColor = v4;//将接收的颜色传递给片元着色器
+		}
+    </script>
+    
+     <script id="fs" type="x-shader/webgl">
+		precision mediump float;
+		varying  vec4 vColor; //接收从顶点着色器过来的参数
+		void main() {  
+		   gl_FragColor = vColor;//给此片元颜色值
+		}
+    </script>
+   
+	
+	<script type="text/javascript">
+		$(function(){
+			var gl=initGL();
+			
+			gl.clearColor(0.0,0.0,0.0,1.0);
+			gl.enable(gl.DEPTH_TEST);
+			gl.viewport(0,0,gl.width,gl.height);
+			gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+			//var pvs=mat4.create();
+			//var camera=mat4.create();
+			var move=mat4.create();
+			var radios=gl.width/gl.height;
+			//mat4.frustum(pvs,-radios,radios,-1,1,1,50);
+			//mat4.lookAt(camera,[0.0,0.0,1.2],[0.0,0.0,0.0],[0.0,1.0,0.0]);
+			//旋转
+			//mat4.rotate(move,move,45*Math.PI/180,[1.0,1.0,1.0]);
+
+			var ball=new Ball(gl,move);
+			ball.draw();
+
+			
+		});
+		function initGL(){
+			var canvas=$("#canvas")[0];
+			gl=canvas.getContext("webgl");
+			gl.width=canvas.width;
+			gl.height=canvas.height;
+			return gl;
+		}
+		function Ball(gl,mvs){
+			var arrayBuffer;
+			var colorBuffer;
+			var program;
+			var mv=mvs;
+			var init=function(){
+				initShader();
+				initBuffers();
+			}
+			var initShader=function(){
+				var vs=getShader("vs",gl.VERTEX_SHADER);
+				var fs=getShader("fs",gl.FRAGMENT_SHADER);
+				
+				program=gl.createProgram();
+				gl.attachShader(program,vs);
+				gl.attachShader(program,fs);
+				
+				gl.linkProgram(program);
+				if(!gl.getProgramParameter(program,gl.LINK_STATUS)){
+					alert("link error");
+					console.log(gl.getProgramInfoLog(program));
+					return;
+				}
+				
+				program.v3=gl.getAttribLocation(program,"v3");
+				program.mv=gl.getUniformLocation(program, "mv");
+				program.v4=gl.getAttribLocation(program, "v4");
+
+				gl.enableVertexAttribArray(program.v3);
+				gl.enableVertexAttribArray(program.v4);	
+			};
+			var getShader=function(id,type){
+				var shaderScript = $("#" + id);
+				var str = shaderScript.text();
+				var shader=gl.createShader(type);
+				gl.shaderSource(shader,str);
+				gl.compileShader(shader);
+				
+				if(!gl.getShaderParameter(shader,gl.COMPILE_STATUS)){
+					alert("complie error");
+					console.log(gl.getShaderInfoLog(shader));
+					return null;
+				}
+				return shader;
+			};
+			
+			function initBuffers(){
+				var UNIT_SIZE=0.1;
+				var vertices = [
+						-8 * UNIT_SIZE, 10 * UNIT_SIZE, 0,
+						-2 * UNIT_SIZE, 2 * UNIT_SIZE, 0, 
+						-8 * UNIT_SIZE, 2 * UNIT_SIZE, 0,
+
+						8 * UNIT_SIZE, 2 * UNIT_SIZE, 0, 
+						8 * UNIT_SIZE, 10 * UNIT_SIZE, 0, 
+						2 * UNIT_SIZE, 10 * UNIT_SIZE, 0 
+				];
+
+				arrayBuffer=gl.createBuffer();
+				gl.bindBuffer(gl.ARRAY_BUFFER, arrayBuffer);
+				gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
+
+				arrayBuffer.items=6;
+
+				var colors= [// 顶点颜色值数组，每个顶点4个色彩值RGBA
+					1.0, 1.0, 1.0, 1.0, 
+					0.0, 0.0, 1.0, 1.0, 
+					0.0, 0.0, 1.0, 1.0, 
+					1.0, 1.0, 1.0, 1.0, 
+					0.0, 1.0, 0.0, 1.0, 
+					0.0, 1.0, 0.0, 1.0 
+				];
+
+				colorBuffer=gl.createBuffer();
+				gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
+				gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(colors), gl.STATIC_DRAW);
+			
+			};
+			this.draw=function(){
+				gl.useProgram(program);
+				gl.frontFace(gl.CW);
+				gl.enable(gl.CULL_FACE);
+				
+				
+				//mat4.translate(mv,mv,[-0.1*z,0.0,0.0]);
+				gl.bindBuffer(gl.ARRAY_BUFFER,arrayBuffer);
+				gl.vertexAttribPointer(program.v3,3,gl.FLOAT,false,0,0);
+
+				gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
+				gl.vertexAttribPointer(program.v4,4,gl.FLOAT,false,0,0);
+
+				gl.uniformMatrix4fv(program.mv, false, mv);
+				
+				gl.drawArrays(gl.TRIANGLES, 0, arrayBuffer.items);
+			};
+			init();
+		}
+	</script>
+</body>
+</html>

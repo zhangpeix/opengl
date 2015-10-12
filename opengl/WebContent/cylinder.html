@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Insert title here</title>
+<script type="text/javascript" src="jquery-1.11.3.min.js"></script>
+<script type="text/javascript" src="gl-matrix.js"></script>
+</head>
+<body>
+	<canvas id="canvas" width="800" height="600"></canvas>
+	<script id="vs" type="x-shader/webgl">
+		attribute vec3 v3;
+		attribute vec2 v2;
+		uniform mat4 pm;
+		uniform mat4 mv;
+		varying vec2 vc2;
+		void main(){
+			gl_Position=pm*mv*vec4(v3,1.0);
+			vc2=v2;
+		}
+    </script>
+    
+     <script id="fs" type="x-shader/webgl">
+		precision mediump float;
+		uniform sampler2D d2s;
+		varying vec2 vc2;
+		void main(){
+			gl_FragColor=texture2D(d2s,vc2);
+		}
+    </script>
+   
+	
+	<script type="text/javascript">
+		$(function(){
+			var gl=initGL();
+			gl.clearColor(0.0,0.0,0.0,1.0);
+			gl.enable(gl.DEPTH_TEST);
+			gl.viewport(0,0,gl.width,gl.height);
+			
+			var c=new Cylinder(gl,0.5,5);
+			
+		});
+		function initGL(){
+			var canvas=$("#canvas")[0];
+			gl=canvas.getContext("webgl");
+			gl.width=canvas.width;
+			gl.height=canvas.height;
+			return gl;
+		}
+		function Cylinder(gl,r,h){
+			var texIndexBuffer;
+			var bottom;
+			var top;
+			var mv=mat4.create();
+			var pm=mat4.create();
+			var init=function(){
+				initMatrix();
+				bottom=new circle(gl,r,0);
+				top=new circle(gl,r,h);
+				side=new side(gl,r,h);
+				initTexture();
+				
+			}
+			var initMatrix=function(){
+				var pvs=mat4.create();
+				var camera=mat4.create();
+				var radios=gl.width/gl.height;
+				mat4.frustum(pvs,-radios,radios,-1,1,1,50);
+				mat4.lookAt(camera,[0.0,0.0,1.5],[0.0,0.0,0.0],[0.0,1.0,0.0]);
+				
+				mat4.rotate(mv,mv,45*Math.PI/180,[1.0,1.0,1.0]);
+				mat4.multiply(pm,pvs,camera);
+			}
+			
+			function initTexture(){
+				texBuffer=gl.createTexture();
+				texBuffer.img=new Image();
+				texBuffer.img.onload=function(){
+					gl.bindTexture(gl.TEXTURE_2D, texBuffer);
+					gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true); //使坐上角的纹理坐标（0，0）变为左下角
+					gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, texBuffer.img);
+					gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+					gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+					gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+					gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+					gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+					bottom.draw(mv,pm);
+					top.draw(mv,pm);
+					side.draw(mv,pm);
+
+				}
+				texBuffer.img.src='android_robot0.png';
+			}
+			
+			var circle=function(gl,r,h){
+				var arrayBuffer;
+				var texIndexBuffer;
+				var program;
+				
+				var init=function(){
+					initShader();
+					initBuffers();
+					
+				}
+				
+				var initShader=function(){
+					var vs=getShader("vs",gl.VERTEX_SHADER);
+					var fs=getShader("fs",gl.FRAGMENT_SHADER);
+					
+					program=gl.createProgram();
+					gl.attachShader(program,vs);
+					gl.attachShader(program,fs);
+					
+					gl.linkProgram(program);
+					if(!gl.getProgramParameter(program,gl.LINK_STATUS)){
+						alert("link error");
+						console.log(gl.getProgramInfoLog(program));
+						return;
+					}
+					
+					program.v3=gl.getAttribLocation(program,"v3");
+					program.v2=gl.getAttribLocation(program,"v2");
+					program.pm=gl.getUniformLocation(program,"pm");
+					program.mv=gl.getUniformLocation(program,"mv");
+					program.d2s=gl.getUniformLocation(program,"d2s");
+
+					gl.enableVertexAttribArray(program.v3);
+					gl.enableVertexAttribArray(program.v2);	
+				};
+				var getShader=function(id,type){
+					var shaderScript = $("#" + id);
+					var str = shaderScript.text();
+					var shader=gl.createShader(type);
+					gl.shaderSource(shader,str);
+					gl.compileShader(shader);
+					
+					if(!gl.getShaderParameter(shader,gl.COMPILE_STATUS)){
+						alert("complie error");
+						console.log(gl.getShaderInfoLog(shader));
+						return null;
+					}
+					return shader;
+				};
+				
+				var initBuffers=function(){
+					var vertices=new Array();
+					var texIndex=new Array();
+					var arcin=10;
+					var arcm=Math.PI/180;
+					for(var arc=0;arc<360;arc+=arcin){
+						vertices.push(0);
+						vertices.push(0);
+						vertices.push(-h);
+
+						texIndex.push(0.5);
+						texIndex.push(0.5);
+
+
+						vertices.push(r*Math.cos(arc*arcm));
+						vertices.push(r*Math.sin(arc*arcm));
+						vertices.push(-h);
+
+						texIndex.push(r+r*Math.cos(arc*arcm));
+						texIndex.push(r+r*Math.sin(arc*arcm));
+
+						vertices.push(r*Math.cos((arc+arcin)*arcm));
+						vertices.push(r*Math.sin((arc+arcin)*arcm));
+						vertices.push(-h);
+
+						texIndex.push(r+r*Math.cos((arc+arcin)*arcm));
+						texIndex.push(r+r*Math.sin((arc+arcin)*arcm));
+					}
+
+					arrayBuffer=gl.createBuffer();
+					gl.bindBuffer(gl.ARRAY_BUFFER, arrayBuffer);
+					gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
+
+					arrayBuffer.items=vertices.length/3;
+
+					texIndexBuffer=gl.createBuffer();
+					gl.bindBuffer(gl.ARRAY_BUFFER, texIndexBuffer);
+					gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(texIndex), gl.STATIC_DRAW);
+				
+				};
+				this.draw=function(mvs,pms){
+					gl.useProgram(program);
+					//gl.frontFace(gl.CW);
+					gl.enable(gl.CULL_FACE);
+					
+					
+					//mat4.translate(mv,mv,[-0.1*z,0.0,0.0]);
+					gl.bindBuffer(gl.ARRAY_BUFFER,arrayBuffer);
+					gl.vertexAttribPointer(program.v3,3,gl.FLOAT,false,0,0);
+					
+					gl.bindBuffer(gl.ARRAY_BUFFER,texIndexBuffer);
+					gl.vertexAttribPointer(program.v2,2,gl.FLOAT,false,0,0);
+
+					gl.activeTexture(gl.TEXTURE0);
+					gl.bindTexture(gl.TEXTURE_2D,texBuffer);
+					gl.uniform1i(program.d2s,0);
+
+					gl.uniformMatrix4fv(program.mv, false, mvs);
+					gl.uniformMatrix4fv(program.pm, false, pms);
+					//gl.uniform1f(program.ur,r);
+					
+					gl.drawArrays(gl.TRIANGLES, 0, arrayBuffer.items);
+				};
+				init();
+			}
+			
+			var side=function(gl,r,h){
+				var arrayBuffer;
+				var texIndexBuffer;
+				var program;
+				
+				var init=function(){
+					initShader();
+					initBuffers();
+					
+				}
+				
+				var initShader=function(){
+					var vs=getShader("vs",gl.VERTEX_SHADER);
+					var fs=getShader("fs",gl.FRAGMENT_SHADER);
+					
+					program=gl.createProgram();
+					gl.attachShader(program,vs);
+					gl.attachShader(program,fs);
+					
+					gl.linkProgram(program);
+					if(!gl.getProgramParameter(program,gl.LINK_STATUS)){
+						alert("link error");
+						console.log(gl.getProgramInfoLog(program));
+						return;
+					}
+					
+					program.v3=gl.getAttribLocation(program,"v3");
+					program.v2=gl.getAttribLocation(program,"v2");
+					program.pm=gl.getUniformLocation(program,"pm");
+					program.mv=gl.getUniformLocation(program,"mv");
+					program.d2s=gl.getUniformLocation(program,"d2s");
+
+					gl.enableVertexAttribArray(program.v3);
+					gl.enableVertexAttribArray(program.v2);	
+				};
+				var getShader=function(id,type){
+					var shaderScript = $("#" + id);
+					var str = shaderScript.text();
+					var shader=gl.createShader(type);
+					gl.shaderSource(shader,str);
+					gl.compileShader(shader);
+					
+					if(!gl.getShaderParameter(shader,gl.COMPILE_STATUS)){
+						alert("complie error");
+						console.log(gl.getShaderInfoLog(shader));
+						return null;
+					}
+					return shader;
+				};
+				
+				var initBuffers=function(){
+					var vertices=new Array();
+					var texIndex=new Array();
+					var arcin=10;
+					var arcm=Math.PI/180;
+					for(var arc=0;arc<360;arc+=arcin){
+						vertices.push(r*Math.cos(arc*arcm));
+						vertices.push(r*Math.sin(arc*arcm));
+						vertices.push(0);
+						
+						texIndex.push(r*arc*arcm);
+						texIndex.push(0);
+						
+						vertices.push(r*Math.cos((arc+arcin)*arcm));
+						vertices.push(r*Math.sin((arc+arcin)*arcm));
+						vertices.push(0);
+						
+						texIndex.push(r*(arc+arcin)*arcm);
+						texIndex.push(0);
+						
+						vertices.push(r*Math.cos((arc)*arcm));
+						vertices.push(r*Math.sin((arc)*arcm));
+						vertices.push(-h);
+						
+						texIndex.push(r*arc*arcm);
+						texIndex.push(1);
+						
+						vertices.push(r*Math.cos((arc+arcin)*arcm));
+						vertices.push(r*Math.sin((arc+arcin)*arcm));
+						vertices.push(0);
+						
+						texIndex.push(r*(arc+arcin)*arcm);
+						texIndex.push(0);
+						
+						vertices.push(r*Math.cos((arc+arcin)*arcm));
+						vertices.push(r*Math.sin((arc+arcin)*arcm));
+						vertices.push(-h);
+						
+						texIndex.push(r*(arc+arcin)*arcm);
+						texIndex.push(1);
+						
+						vertices.push(r*Math.cos((arc)*arcm));
+						vertices.push(r*Math.sin((arc)*arcm));
+						vertices.push(-h);
+						
+						texIndex.push(r*arc*arcm);
+						texIndex.push(1);
+						
+					}
+
+					arrayBuffer=gl.createBuffer();
+					gl.bindBuffer(gl.ARRAY_BUFFER, arrayBuffer);
+					gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
+
+					arrayBuffer.items=vertices.length/3;
+
+					texIndexBuffer=gl.createBuffer();
+					gl.bindBuffer(gl.ARRAY_BUFFER, texIndexBuffer);
+					gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(texIndex), gl.STATIC_DRAW);
+				
+				};
+				this.draw=function(mvs,pms){
+					gl.useProgram(program);
+					gl.frontFace(gl.CW);
+					gl.enable(gl.CULL_FACE);
+					
+					
+					//mat4.translate(mv,mv,[-0.1*z,0.0,0.0]);
+					gl.bindBuffer(gl.ARRAY_BUFFER,arrayBuffer);
+					gl.vertexAttribPointer(program.v3,3,gl.FLOAT,false,0,0);
+					
+					gl.bindBuffer(gl.ARRAY_BUFFER,texIndexBuffer);
+					gl.vertexAttribPointer(program.v2,2,gl.FLOAT,false,0,0);
+
+					gl.activeTexture(gl.TEXTURE0);
+					gl.bindTexture(gl.TEXTURE_2D,texBuffer);
+					gl.uniform1i(program.d2s,0);
+
+					gl.uniformMatrix4fv(program.mv, false, mvs);
+					gl.uniformMatrix4fv(program.pm, false, pms);
+					//gl.uniform1f(program.ur,r);
+					
+					gl.drawArrays(gl.TRIANGLES, 0, arrayBuffer.items);
+				};
+				init();
+			}
+			
+			
+			init();
+		}
+	</script>
+</body>
+</html>

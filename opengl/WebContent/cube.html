@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Insert title here</title>
+<script type="text/javascript" src="jquery-1.11.3.min.js"></script>
+<script type="text/javascript" src="gl-matrix.js"></script>
+</head>
+<body>
+	<canvas id="canvas" width="800" height="600"></canvas>
+	<script id="vs" type="x-shader/webgl">
+		attribute vec3 v3;
+		uniform mat4 mv;
+		varying vec3 vp3;
+		void main(){
+			gl_Position=mv*vec4(v3,1.0);
+			vp3=v3;
+		}
+    </script>
+    
+     <script id="fs" type="x-shader/webgl">
+		precision mediump float;
+		uniform float ur;
+		varying vec3 vp3;
+		void main(){
+			vec3 color;
+			float n=4.0;
+			float span=2.0*ur/n;
+			int i=int((vp3.x+ur)/span);
+			int j=int((vp3.y+ur)/span);
+			int k=int((vp3.z+ur)/span);
+			int wc=int(mod(float(i+j+k),2.0));
+			if(wc==1){
+				color=vec3(0.678,0.231,0.129);
+			}else{
+				color=vec3(1.0,1.0,1.0);
+			}
+			gl_FragColor=vec4(color,1.0);
+		}
+    </script>
+   
+	
+	<script type="text/javascript">
+		$(function(){
+			var gl=initGL();
+			
+			gl.clearColor(0.0,0.0,0.0,1.0);
+			gl.enable(gl.DEPTH_TEST);
+			gl.viewport(0,0,gl.width,gl.height);
+			gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+			var pvs=mat4.create();
+			var camera=mat4.create();
+			var move=mat4.create();
+			var radios=gl.width/gl.height;
+			//正交投影
+			mat4.ortho(pvs,-radios,radios,-1,1,1,10);
+			mat4.lookAt(camera,[0.0,0.0,3.0],[0.0,0.0,0.0],[0.0,1.0,0.0]);
+			//旋转
+			mat4.rotate(move,move,45*Math.PI/180,[1.0,1.0,1.0]);
+
+			var finalmat=mat4.create();
+			mat4.multiply(finalmat,camera,move);
+			mat4.multiply(finalmat,pvs,finalmat);
+
+			var cube=new Cube(0.5,gl,finalmat);
+			cube.draw();
+
+			
+		});
+		function initGL(){
+			var canvas=$("#canvas")[0];
+			gl=canvas.getContext("webgl");
+			gl.width=canvas.width;
+			gl.height=canvas.height;
+			return gl;
+		}
+		function Cube(r,gl,mvs){
+			var arrayBuffer;
+			var program;
+			var mv=mvs;
+			var init=function(){
+				initShader();
+				initBuffers();
+			}
+			var initShader=function(){
+				var vs=getShader("vs",gl.VERTEX_SHADER);
+				var fs=getShader("fs",gl.FRAGMENT_SHADER);
+				
+				program=gl.createProgram();
+				gl.attachShader(program,vs);
+				gl.attachShader(program,fs);
+				
+				gl.linkProgram(program);
+				if(!gl.getProgramParameter(program,gl.LINK_STATUS)){
+					alert("link error");
+					console.log(gl.getProgramInfoLog(program));
+					return;
+				}
+				
+				program.v3=gl.getAttribLocation(program,"v3");
+				program.mv=gl.getUniformLocation(program, "mv");
+				program.ur=gl.getUniformLocation(program, "ur");
+
+				gl.enableVertexAttribArray(program.v3);	
+			};
+			var getShader=function(id,type){
+				var shaderScript = $("#" + id);
+				var str = shaderScript.text();
+				var shader=gl.createShader(type);
+				gl.shaderSource(shader,str);
+				gl.compileShader(shader);
+				
+				if(!gl.getShaderParameter(shader,gl.COMPILE_STATUS)){
+					alert("complie error");
+					console.log(gl.getShaderInfoLog(shader));
+					return null;
+				}
+				return shader;
+			};
+			
+			function initBuffers(){
+				var vertices=[
+		        	//前面
+		        	r,r,r, //0       	
+		        	-r,r,r,//1 
+		        	-r,-r,r, //2 
+		        	
+		        	r,r,r, //0 
+		        	-r,-r,r, //2        	
+		        	r,-r,r,//3 
+		        	//后面  	
+		        	r,r,-r,//0  
+		        	r,-r,-r,//1 
+		        	-r,-r,-r,//2
+		        	
+		        	r,r,-r,//0
+		        	-r,-r,-r,//2
+		        	-r,r,-r,//3
+		        	//左面	
+		        	-r,r,r,//0 
+		        	-r,r,-r,//1
+		        	-r,-r,-r,//2
+		        	
+		        	-r,r,r,//0 
+		        	-r,-r,-r,//2
+		        	-r,-r,r,//3
+		        	//右面
+		        	r,r,r,//0  
+		        	r,-r,r,//1
+		        	r,-r,-r,//2
+		        	
+		        	r,r,r,//0  
+		        	r,-r,-r,//2
+		        	r,r,-r,//3
+		        	//上面     
+		        	r,r,r,//0  
+		        	r,r,-r,//1
+		        	-r,r,-r,//2
+		        	
+		        	r,r,r,//0 
+		        	-r,r,-r,//2
+		        	-r,r,r,//3
+		        	//下面  	
+		        	r,-r,r,//0  
+		        	-r,-r,r,//1
+		        	-r,-r,-r,//2
+		        	
+		        	r,-r,r,//0 
+		        	-r,-r,-r,//2
+		        	r,-r,-r,//3
+		        ];
+
+				arrayBuffer=gl.createBuffer();
+				gl.bindBuffer(gl.ARRAY_BUFFER, arrayBuffer);
+				gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
+
+				arrayBuffer.items=vertices.length/3;
+			
+			};
+			this.draw=function(){
+				gl.useProgram(program);
+				//gl.frontFace(gl.CW);
+				gl.enable(gl.CULL_FACE);
+				
+				
+				//mat4.translate(mv,mv,[-0.1*z,0.0,0.0]);
+				gl.bindBuffer(gl.ARRAY_BUFFER,arrayBuffer);
+				gl.vertexAttribPointer(program.v3,3,gl.FLOAT,false,0,0);
+				
+				gl.uniformMatrix4fv(program.mv, false, mv);
+				gl.uniform1f(program.ur,r);
+				
+				gl.drawArrays(gl.TRIANGLES, 0, arrayBuffer.items);
+			};
+			init();
+		}
+	</script>
+</body>
+</html>

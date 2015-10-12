@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Insert title here</title>
+<script type="text/javascript" src="jquery-1.11.3.min.js"></script>
+<script type="text/javascript" src="gl-matrix.js"></script>
+</head>
+<body>
+	<canvas id="canvas" width="800" height="600"></canvas>
+	<script id="vs" type="x-shader/webgl">
+		attribute vec3 v3;
+		attribute vec4 v4;
+		uniform mat4 mv;
+		varying vec4 v4c;
+		void main(){
+			v4c=v4;
+			gl_Position=mv*vec4(v3,1.0);
+		}
+    </script>
+    
+     <script id="fs" type="x-shader/webgl">
+		precision mediump float;
+		varying vec4 v4c;
+		void main(){
+			gl_FragColor=v4c;
+		}
+    </script>
+   
+	
+	<script type="text/javascript">
+		$(function(){
+			var gl=initGL();
+			
+			gl.clearColor(0.0,0.0,0.0,1.0);
+			gl.enable(gl.DEPTH_TEST);
+			gl.viewport(0,0,gl.width,gl.height);
+			gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+			var pvs=mat4.create();
+			var camera=mat4.create();
+			var radios=gl.width/gl.height;
+			/*
+			正交投影矩阵
+			mat4.ortho(pvs,-radios,radios,-1,1,1,10);
+			mat4.lookAt(camera,[-1.0,-1.0,3.0],[0.0,0.0,0.0],[0.0,1.0,0.0]);
+			*/
+			//透视投影矩阵
+			mat4.frustum(pvs,-radios,radios,-1,1,1,50);
+			mat4.lookAt(camera,[0.0,1.0,2.0],[0.0,0.0,0.0],[0.0,1.0,0.0]);
+
+			var sss=new Array();
+			for(var i=0;i<5;i++){
+				var mvd=mat4.create();
+				//mat4.translate(mvd,mvd,[0.0,0.0,0.0]);
+				var finalmat=mat4.create();
+				mat4.multiply(finalmat,camera,mvd);
+				mat4.multiply(finalmat,pvs,finalmat);
+				sss[i] = new SixStar(0.5,0.25,-1.2*i,gl,finalmat);	
+				sss[i].draw();
+			}
+		});
+		function initGL(){
+			var canvas=$("#canvas")[0];
+			gl=canvas.getContext("webgl");
+			gl.width=canvas.width;
+			gl.height=canvas.height;
+			return gl;
+		}
+		function SixStar(r,r2,z,gl,mvs){
+			var starBuffer;
+			var program;
+			var colorBuffer;
+			var mv=mvs;
+			var init=function(){
+				initShader();
+				initBuffers();
+			}
+			var initShader=function(){
+				var vs=getShader("vs",gl.VERTEX_SHADER);
+				var fs=getShader("fs",gl.FRAGMENT_SHADER);
+				
+				program=gl.createProgram();
+				gl.attachShader(program,vs);
+				gl.attachShader(program,fs);
+				
+				gl.linkProgram(program);
+				if(!gl.getProgramParameter(program,gl.LINK_STATUS)){
+					alert(gl.getProgramInfoLog(program));
+					return;
+				}
+				
+				program.v3=gl.getAttribLocation(program,"v3");
+				program.v4=gl.getAttribLocation(program, "v4");
+				program.mv=gl.getUniformLocation(program, "mv");
+
+				gl.enableVertexAttribArray(program.v3);	
+				gl.enableVertexAttribArray(program.v4);	
+			};
+			var getShader=function(id,type){
+				var shaderScript = $("#" + id);
+				var str = shaderScript.text();
+				var shader=gl.createShader(type);
+				gl.shaderSource(shader,str);
+				gl.compileShader(shader);
+				
+				if(!gl.getShaderParameter(shader,gl.COMPILE_STATUS)){
+					alert(gl.getShaderInfoLog(shader));
+					return null;
+				}
+				return shader;
+			};
+			
+			function initBuffers(){
+				var angle=60;
+				var points=new Array();
+				for(var i=0;i<360;i+=angle){
+					points.push(0);
+					points.push(0); 
+					points.push(z);  
+
+					points.push(r2*Math.cos((i)*Math.PI/180));
+					points.push(r2*Math.sin((i)*Math.PI/180));
+					points.push(z);
+
+
+					points.push(r*Math.cos((i+angle/2)*Math.PI/180));
+					points.push(r*Math.sin((i+angle/2)*Math.PI/180));
+					points.push(z);
+
+					points.push(0);
+					points.push(0); 
+					points.push(z);
+
+					points.push(r*Math.cos((i+angle/2)*Math.PI/180));
+					points.push(r*Math.sin((i+angle/2)*Math.PI/180));
+					points.push(z);
+
+					points.push(r2*Math.cos((i+angle)*Math.PI/180));
+					points.push(r2*Math.sin((i+angle)*Math.PI/180));
+					points.push(z);
+
+					
+
+				}
+				starBuffer=gl.createBuffer();
+				gl.bindBuffer(gl.ARRAY_BUFFER, starBuffer);
+				gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(points), gl.STATIC_DRAW);
+
+
+				var colorArray=new Array(36*4);
+				for(var i=0;i<36;i++){
+					if(i%3==0){//中心点为白色
+						colorArray[i*4]=1.0;
+						colorArray[i*4+1]=1.0;
+						colorArray[i*4+2]=1.0;
+						colorArray[i*4+3]=1.0;
+					}else{//边上的点为淡蓝色
+						colorArray[i*4]=0.45;
+						colorArray[i*4+1]=0.75;
+						colorArray[i*4+2]=0.75;
+						colorArray[i*4+3]=1.0;
+					}
+				}
+				colorBuffer=gl.createBuffer();
+				gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
+				gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(colorArray), gl.STATIC_DRAW);
+			
+			}
+			this.draw=function(){
+				gl.useProgram(program);
+				//gl.frontFace(gl.CW);
+				gl.enable(gl.CULL_FACE);
+				
+				
+				//mat4.translate(mv,mv,[-0.1*z,0.0,0.0]);
+				gl.bindBuffer(gl.ARRAY_BUFFER,starBuffer);
+				gl.vertexAttribPointer(program.v3,3,gl.FLOAT,false,0,0);
+
+				gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
+				gl.vertexAttribPointer(program.v4, 4,gl.FLOAT,false, 0, 0);
+				//var radio=gl.width/gl.hegiht;
+				
+				gl.uniformMatrix4fv(program.mv, false, mv);
+				
+				gl.drawArrays(gl.TRIANGLES, 0, 36);
+			};
+			init();
+		}
+	</script>
+</body>
+</html>
